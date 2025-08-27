@@ -1,0 +1,96 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Report Renderer Test</title>
+  <style>
+    body { font-family: ui-sans-serif, system-ui, Segoe UI, Arial; margin: 20px; }
+    textarea { width: 100%; height: 260px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .row { display: flex; gap: 12px; margin: 12px 0; align-items: center; }
+    input[type="text"] { width: 420px; padding: 6px 8px; }
+    button { padding: 8px 14px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h2>Report Renderer – Browser Test</h2>
+
+  <div class="row">
+    <label>Server URL:</label>
+    <input id="server" type="text" value="http://localhost:3000" />
+  </div>
+
+  <p>Paste JSON payload:</p>
+  <textarea id="payload"></textarea>
+
+  <div class="row">
+    <button id="btnHtml">Preview HTML</button>
+    <button id="btnPdf">Preview PDF</button>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    // Put a small sample so it's not blank
+    $('payload').value = JSON.stringify({
+      company: "Test Co",
+      reportName: "Hello PDF",
+      configs: {
+        page: { size: "A4", orientation: "portrait", margin: "18mm" },
+        font: { family: "system-ui, sans-serif", base: "text-[12pt]" },
+        header: {
+  visible: true,
+  align: "center",
+  repeat: "all"  // or "first"
+},
+        footer: { visible: true, text: "Page {{page}} of {{pages}}", align: "center" },
+        date: { align: "right", format: "DD MMM YYYY" },
+        table: { border: "border", striped: false, compact: true }
+      },
+      components: [
+        { type: "header", props: { text: "Hello, PDF" } },
+        { type: "para", props: { text: "This is a minimal test paragraph." } },
+        { type: "signature", props: { label: "Sign here", lines: 1 } }
+      ]
+    }, null, 2);
+
+    async function postJson(url, obj) {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(obj)
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res;
+    }
+
+    $('btnHtml').onclick = async () => {
+      try {
+        const base = $('server').value.replace(/\/+$/, "");
+        const payload = JSON.parse($('payload').value);
+        const res = await postJson(base + "/render", payload);
+        const html = await res.text();
+        const w = window.open("", "_blank");
+        w.document.open(); w.document.write(html); w.document.close();
+      } catch (e) {
+        alert("HTML render failed:\n" + e);
+      }
+    };
+
+    $('btnPdf').onclick = async () => {
+      try {
+        const base = $('server').value.replace(/\/+$/, "");
+        const payload = JSON.parse($('payload').value);
+        const res = await postJson(base + "/render.pdf", payload);
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        // open in a new tab
+        window.open(url, "_blank");
+        // optional auto-revoke after a while:
+        setTimeout(() => URL.revokeObjectURL(url), 30000);
+      } catch (e) {
+        alert("PDF render failed:\n" + e);
+      }
+    };
+  </script>
+</body>
+</html>
