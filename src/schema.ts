@@ -6,7 +6,7 @@ const Assets = z.object({
   headerImage: z.string().url().optional(),
   footerImage: z.string().url().optional(),
   logo: z.string().url().optional()
-}).strict();
+}).partial().default({});
 
 const PageCfg = z.object({
   size: z.enum(["A4","Letter"]).default("A4"),

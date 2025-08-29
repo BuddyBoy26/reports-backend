@@ -80,7 +80,7 @@ const tableBlock = (props: any, style: any, cfg: Cfg, colors: Col) => {
   return `
 <section class="${tw("my-4", style?.wrapper)}">
   ${title}
-  <div class="${tw("tbl-wrap", /* keep overflow for screen only */ "overflow-x-auto", style?.container)}">
+  <div class="${tw("tbl-wrap overflow-x-auto", style?.container)}">
     <table class="${tw("tbl w-full border-collapse", cfg.table.border)}" style="border-color:${colors.border}">
       <thead class="bg-gray-100">${thead ? `<tr>${thead}</tr>` : ""}</thead>
       <tbody>${body}</tbody>
@@ -90,9 +90,7 @@ const tableBlock = (props: any, style: any, cfg: Cfg, colors: Col) => {
 </section>`;
 };
 
-
 export const renderBody = (r: Report) => {
-  // Fixed header for all pages
   const fixedHeader =
     r.configs.header.visible && r.configs.header.repeat === "all"
       ? `
@@ -106,7 +104,6 @@ export const renderBody = (r: Report) => {
 </header>`
       : "";
 
-  // Inline header visible only on first page (not fixed)
   const firstPageHeader =
     r.configs.header.visible && r.configs.header.repeat === "first"
       ? `
@@ -120,7 +117,6 @@ export const renderBody = (r: Report) => {
 </section>`
       : "";
 
-  // Fixed footer for all pages
   const fixedFooter = r.configs.footer.visible
     ? `
 <footer class="fixed-footer border-t px-4" style="border-color:${r.colors.border}">
@@ -147,7 +143,6 @@ export const renderBody = (r: Report) => {
     }
   }).join("");
 
-  // Content wrapper reserves the header/footer height via padding (see CSS)
   const main = `
 <main class="prose max-w-none text-[0] body-wrap">
   <div class="text-[inherit] ${r.configs.font.base} ${r.configs.font.leading}" style="font-family:${r.configs.font.family}">
@@ -158,62 +153,36 @@ export const renderBody = (r: Report) => {
   return `${fixedHeader}${main}${fixedFooter}`;
 };
 
-
 export const renderHead = (r: Report) => `
 <style>
 :root{
   --color-text:${r.colors.text};
   --color-border:${r.colors.border};
-
-  /* Page box */
   --page-size:${r.configs.page.size};
   --page-orientation:${r.configs.page.orientation};
   --page-margin:${r.configs.page.margin};
-
-  /* Fixed chrome heights (must match body padding below) */
   --header-h:${r.configs.header.visible && r.configs.header.repeat === "all" ? "48px" : "0px"};
   --footer-h:${r.configs.footer.visible ? "40px" : "0px"};
 }
-
-/* Screen + print base */
-body {
-  color: var(--color-text);
-}
-
-/* Reserve space so content never sits under fixed header/footer */
-.body-wrap {
-  padding-top: var(--header-h);
-  padding-bottom: var(--footer-h);
-}
-
+body { color: var(--color-text); }
+.body-wrap { padding-top: var(--header-h); padding-bottom: var(--footer-h); }
 .fixed-header {
   position: fixed; top: 0; left: 0; right: 0; height: var(--header-h);
-  background: white; /* avoid transparency artifacts on print */
-  z-index: 1000;
+  background: white; z-index: 1000;
 }
-
 .fixed-footer {
   position: fixed; bottom: 0; left: 0; right: 0; height: var(--footer-h);
-  background: white;
-  z-index: 1000;
-  display: flex; align-items: center;
+  background: white; z-index: 1000; display: flex; align-items: center;
 }
+.pagebreak { page-break-after: always; }
 
-/* Print rules */
-@page {
-  size: var(--page-size) var(--page-orientation);
-  margin: var(--page-margin);
-}
+@page { size: var(--page-size) var(--page-orientation); margin: var(--page-margin); }
 
 @media print {
-  /* Repeat the fixed chrome per page */
   .fixed-header { position: fixed; }
   .fixed-footer { position: fixed; }
-
-  /* Avoid elements eating the page box space */
   html, body { height: auto !important; }
 
-  /* Tables split nicely */
   .tbl { page-break-inside: auto; break-inside: auto; }
   .tbl thead { display: table-header-group; }
   .tbl tfoot { display: table-footer-group; }
@@ -221,7 +190,6 @@ body {
   .tbl-wrap { overflow: visible !important; }
 }
 </style>`;
-
 
 function escapeHtml(s: string) {
   return s.replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;").replaceAll("'","&#39;");
