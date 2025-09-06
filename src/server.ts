@@ -13,7 +13,7 @@ const app = express();
 app.use(express.json({ limit: "5mb", type: ["application/json", "application/*+json"] }));
 app.use(
   cors({
-    origin: ["http://localhost:8080", "http://localhost:5173", "http://localhost:3000"],
+    origin: ["http://localhost:8080", "http://localhost:5173", "http://localhost:3000","http://localhost:8080", "https://claim-portal-testing.vercel.app/"],
     methods: ["GET", "POST", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
