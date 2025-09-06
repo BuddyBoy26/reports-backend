@@ -122,7 +122,7 @@ function footerTemplate(report: Report, tplAssets: { footerImage: string | null 
 }
 
 /* ============ Routes ============ */
-app.get("/", (_req, res) => res.json({ status: "ok" }));
+app.get("/", (_req: Request, res: Response) => res.json({ status: "ok" }));
 
 // Return HTML for in-app preview
 app.post("/render", (req: Request, res: Response) => {
