@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p .",
-    "start": "node -e \"import('child_process').execSync('puppeteer browsers install chrome', { stdio: 'inherit' });\" && node dist/server.js",
+    "start": "node -e \"require('child_process').execSync('puppeteer browsers install chrome', { stdio: 'inherit' });\" && node dist/server.js",
     "postinstall": "puppeteer browsers install chrome"
   },
   "dependencies": {
