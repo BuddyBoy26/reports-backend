@@ -19,8 +19,8 @@ app.use(
       "http://localhost:8080",
       "http://localhost:5173",
       "http://localhost:3000",
-      "https://claim-portal-testing.vercel.app/",
-      "https://claim-portal.vercel.app/",
+      "https://claim-portal-testing.vercel.app",
+      "https://claim-portal.vercel.app",
       "http://127.0.0.1:5500"
     ],
     methods: ["GET", "POST", "OPTIONS"],
