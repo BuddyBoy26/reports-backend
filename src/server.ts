@@ -195,7 +195,7 @@ app.post("/render.pdf", async (req, res) => {
         headerImage: tplAssets.headerImage,
       }),
       footerTemplate: footerTemplate(report, { footerImage: tplAssets.footerImage }),
-      margin: { top: "30mm", bottom: "30mm", left: "15mm", right: "15mm" },
+      margin: { top: "0mm", bottom: "0mm", left: "0mm", right: "0mm" },
       preferCSSPageSize: false,
     });
     const filename = asciiFilename(report.reportName) + ".pdf";

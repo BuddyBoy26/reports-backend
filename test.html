@@ -2,24 +2,26 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Report Renderer Test</title>
+  <title>Report-Renderer Browser Test</title>
   <style>
     body { font-family: ui-sans-serif, system-ui, Segoe UI, Arial; margin: 20px; }
-    textarea { width: 100%; height: 260px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    textarea { width: 100%; height: 320px;
+               font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
     .row { display: flex; gap: 12px; margin: 12px 0; align-items: center; }
     input[type="text"] { width: 420px; padding: 6px 8px; }
     button { padding: 8px 14px; cursor: pointer; }
   </style>
 </head>
 <body>
-  <h2>Report Renderer – Browser Test</h2>
+  <h2>Report Renderer — Quick Browser Test</h2>
 
   <div class="row">
     <label>Server URL:</label>
-    <input id="server" type="text" value="http://localhost:3000" />
+    <input id="server" type="text"
+           value="http://localhost:5000" />
   </div>
 
-  <p>Paste JSON payload:</p>
+  <p>JSON payload:</p>
   <textarea id="payload"></textarea>
 
   <div class="row">
@@ -30,29 +32,102 @@
   <script>
     const $ = (id) => document.getElementById(id);
 
-    // Put a small sample so it's not blank
+    /* ----- default payload (your latest JSON) ----- */
     $('payload').value = JSON.stringify({
-      company: "Test Co",
-      reportName: "Hello PDF",
-      configs: {
-        page: { size: "A4", orientation: "portrait", margin: "18mm" },
-        font: { family: "system-ui, sans-serif", base: "text-[12pt]" },
-        header: {
-  visible: true,
-  align: "center",
-  repeat: "all"  // or "first"
-},
-        footer: { visible: true, text: "Page {{page}} of {{pages}}", align: "center" },
-        date: { align: "right", format: "DD MMM YYYY" },
-        table: { border: "border", striped: false, compact: true }
+      "company": "Business Interruption",
+      "reportName": "Claim Report - CLM20250006",
+      "colors": {
+        "primary": "#0F172A",
+        "accent": "#2563EB",
+        "text": "#111827",
+        "muted": "#6B7280",
+        "border": "#E5E7EB"
       },
-      components: [
-        { type: "header", props: { text: "Hello, PDF" } },
-        { type: "para", props: { text: "This is a minimal test paragraph." } },
-        { type: "signature", props: { label: "Sign here", lines: 1 } }
+      "assets": {
+        "headerImage": "https://dummyimage.com/1200x90/0f172a/ffffff.png&text=Claim+Report+Header",
+        "footerImage": "https://dummyimage.com/600x40/2563eb/ffffff.png&text=FOOTER",
+        "backgroundImage": "https://img.freepik.com/free-vector/corporate-blank-orange-background-vector-business_53876-166890.jpg?semt=ais_hybrid&w=740&q=80"
+      },
+      "configs": {
+        "page": { "size": "A4", "orientation": "portrait", "margin": "18mm" },
+        "font": { "family": "Arial", "base": "text-[11pt]", "leading": "leading-relaxed" },
+        "header": { "visible": true, "align": "center", "repeat": "all" },
+        "footer": { "visible": true, "align": "center", "text": "Page {{page}} of {{pages}}" },
+        "date": { "align": "right", "format": "DD MMM YYYY" },
+        "table": {
+          "border": "border border-slate-700",
+          "striped": true,
+          "compact": true,
+          "headerBg": "bg-[#007181] text-white"
+        }
+      },
+      "components": [
+        { "type": "header", "props": { "text": "Claim Report" } },
+        {
+          "type": "para",
+          "style": { "wrapper": "text-sm text-slate-600" },
+          "props": {
+            "text": "Claim #CLM20250006 • Business Interruption • Created Sep 07, 2025"
+          }
+        },
+        { "type": "subheader", "props": { "text": "Claim Overview" } },
+        {
+          "type": "table",
+          "props": {
+            "title": "",
+            "headers": ["Field", "Value"],
+            "rows": [
+              ["Claim number", "CLM20250006"],
+              ["Policy type", "Business Interruption"],
+              ["Status", "draft"],
+              ["Date created", "Sep 07, 2025"]
+            ]
+          }
+        },
+        { "type": "para", "props": { "text": "Description: 1" } },
+        { "type": "subheader", "props": { "text": "Policy Details" } },
+        {
+          "type": "table",
+          "props": {
+            "title": "",
+            "headers": ["Field", "Value"],
+            "rows": [
+              ["Registration id", "2"],
+              ["Insured name", "2"],
+              ["Policy number", "11"],
+              ["Sum insured", "2"],
+              ["Date of loss", "1111-11-11"]
+            ]
+          }
+        },
+        { "type": "subheader", "props": { "text": "Financial Summary" } },
+        {
+          "type": "table",
+          "props": {
+            "title": "",
+            "headers": ["Description", "Amount"],
+            "rows": [
+              ["Claimed Amount", "₹1.00"],
+              ["Status", "DRAFT"]
+            ]
+          }
+        },
+        { "type": "subheader", "props": { "text": "Timeline" } },
+        {
+          "type": "table",
+          "props": {
+            "title": "",
+            "headers": ["Event", "When"],
+            "rows": [
+              ["Created", "Sep 07, 2025"],
+              ["Last updated", "Sep 07, 2025"]
+            ]
+          }
+        }
       ]
     }, null, 2);
 
+    /* ----- helpers ----- */
     async function postJson(url, obj) {
       const res = await fetch(url, {
         method: "POST",
@@ -63,6 +138,7 @@
       return res;
     }
 
+    /* ----- button handlers ----- */
     $('btnHtml').onclick = async () => {
       try {
         const base = $('server').value.replace(/\/+$/, "");
@@ -70,7 +146,9 @@
         const res = await postJson(base + "/render", payload);
         const html = await res.text();
         const w = window.open("", "_blank");
-        w.document.open(); w.document.write(html); w.document.close();
+        w.document.open();
+        w.document.write(html);
+        w.document.close();
       } catch (e) {
         alert("HTML render failed:\n" + e);
       }
@@ -83,9 +161,7 @@
         const res = await postJson(base + "/render.pdf", payload);
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
-        // open in a new tab
         window.open(url, "_blank");
-        // optional auto-revoke after a while:
         setTimeout(() => URL.revokeObjectURL(url), 30000);
       } catch (e) {
         alert("PDF render failed:\n" + e);
