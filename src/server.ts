@@ -1,19 +1,28 @@
-// src/server.ts
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import morgan from "morgan";
-import puppeteer from "puppeteer";
+import * as puppeteer from "puppeteer";
+
 import { ReportSchema, type Report } from "./schema.js";
 import { renderBody, renderHead } from "./renderers.js";
 import { htmlShell } from "./template.js";
 
 const app = express();
 
-/* ============ Middleware ============ */
-app.use(express.json({ limit: "5mb", type: ["application/json", "application/*+json"] }));
+/* ---------- Middleware ---------- */
+app.use(
+  express.json({ limit: "5mb", type: ["application/json", "application/*+json"] })
+);
 app.use(
   cors({
-    origin: ["http://localhost:8080", "http://localhost:5173", "http://localhost:3000","http://localhost:8080", "https://claim-portal-testing.vercel.app/"],
+    origin: [
+      "http://localhost:8080",
+      "http://localhost:5173",
+      "http://localhost:3000",
+      "https://claim-portal-testing.vercel.app/",
+      "https://claim-portal.vercel.app/",
+      "http://127.0.0.1:5500"
+    ],
     methods: ["GET", "POST", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
@@ -21,7 +30,7 @@ app.use(
 app.options("*", cors());
 app.use(morgan("dev"));
 
-/* ============ Utils ============ */
+/* ---------- Helpers ---------- */
 function justifyCSS(align: "left" | "center" | "right") {
   return align === "left" ? "flex-start" : align === "right" ? "flex-end" : "center";
 }
@@ -35,7 +44,16 @@ function escapeHtml(s: string) {
     .replaceAll("'", "&#39;");
 }
 
-/** Fetch a remote image and return a data URI, or null if it fails. */
+function asciiFilename(raw: string): string {
+  // Replace everything outside 0-127 with “_”, and collapse runs of “_”
+  return raw
+    .normalize("NFKD")          // break accents ⇒ base+mark
+    .replace(/[\u0080-\uFFFF]/g, "_")  // non-ASCII → _
+    .replace(/_+/g, "_")               // shrink repeats
+    .replace(/^\W+|\W+$/g, "")         // trim leading/trailing non-word
+    || "report";                       // fallback
+}
+
 async function urlToDataUri(url?: string | null): Promise<string | null> {
   if (!url) return null;
   try {
@@ -43,32 +61,35 @@ async function urlToDataUri(url?: string | null): Promise<string | null> {
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const buf = Buffer.from(await res.arrayBuffer());
     const ct = res.headers.get("content-type") || "image/png";
-    const b64 = buf.toString("base64");
-    return `data:${ct};base64,${b64}`;
+    return `data:${ct};base64,${buf.toString("base64")}`;
   } catch (e) {
-    console.warn("[assets] Failed to fetch image for template:", url, e);
+    console.warn("[assets] Failed to fetch image:", url, e);
     return null;
   }
 }
 
 async function buildTemplateAssets(report: Report) {
-  const logo = await urlToDataUri(report.assets?.logo);
-  const headerImage = await urlToDataUri(report.assets?.headerImage);
-  const footerImage = await urlToDataUri(report.assets?.footerImage);
-  return { logo, headerImage, footerImage };
+  return {
+    logo: await urlToDataUri(report.assets.logo),
+    headerImage: await urlToDataUri(report.assets.headerImage),
+    footerImage: await urlToDataUri(report.assets.footerImage),
+  };
 }
 
+/* ---------- Header/footer template strings ---------- */
 function headerTemplate(
   report: Report,
   tplAssets: { logo: string | null; headerImage: string | null }
 ) {
-  if (!report.configs.header.visible) return `<div></div>`;
+  if (!report.configs.header.visible) return "<div></div>";
 
   const titleHtml = tplAssets.headerImage
     ? `<img src="${tplAssets.headerImage}" style="height:18px;" />`
     : `<div style="font-weight:600;">${escapeHtml(report.reportName)}</div>`;
 
-  const logoHtml = tplAssets.logo ? `<img src="${tplAssets.logo}" style="height:14px;margin-right:8px;" />` : "";
+  const logoHtml = tplAssets.logo
+    ? `<img src="${tplAssets.logo}" style="height:14px;margin-right:8px;" />`
+    : "";
 
   return `
 <div style="
@@ -88,19 +109,18 @@ function headerTemplate(
 }
 
 function footerTemplate(report: Report, tplAssets: { footerImage: string | null }) {
-  if (!report.configs.footer.visible) return `<div></div>`;
+  if (!report.configs.footer.visible) return "<div></div>";
 
-  // Use non-breaking spaces to prevent Chromium template whitespace collapse.
-  // Also wrap static words in spans so spacing is consistent across engines.
   const raw = report.configs.footer.text || "Page {{page}} of {{pages}}";
   const textHtml = raw
     .replaceAll("{{page}}", '&nbsp;<span class="pageNumber"></span>&nbsp;')
     .replaceAll("{{pages}}", '&nbsp;<span class="totalPages"></span>')
-    // Ensure "Page" and "of" remain separated even if the engine trims text nodes.
     .replace(/^Page\b/i, '<span style="padding-right:2px;">Page</span>')
     .replace(/\bof\b/i, '<span style="padding:0 2px;">of</span>');
 
-  const imgHtml = tplAssets.footerImage ? `<img src="${tplAssets.footerImage}" style="height:14px;margin-right:8px;" />` : "";
+  const imgHtml = tplAssets.footerImage
+    ? `<img src="${tplAssets.footerImage}" style="height:14px;margin-right:8px;" />`
+    : "";
 
   return `
 <div style="
@@ -114,44 +134,42 @@ function footerTemplate(report: Report, tplAssets: { footerImage: string | null 
   border-top:1px solid ${report.colors.border};
   font-family:${report.configs.font.family};
   margin:0 15mm;
-  /* Tabular numbers help avoid page-number jitter */
   font-variant-numeric: tabular-nums;
 ">
   ${imgHtml}${textHtml}
 </div>`;
 }
 
-/* ============ Routes ============ */
-app.get("/", (_req: Request, res: Response) => res.json({ status: "ok" }));
+/* ---------- Routes ---------- */
+app.get("/", (_req, res) => res.json({ status: "ok" }));
 
-// Return HTML for in-app preview
-app.post("/render", (req: Request, res: Response) => {
+/* ---- Live-preview HTML ---- */
+app.post("/render", (req, res) => {
   const parsed = ReportSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: "Invalid payload", issues: parsed.error.issues });
+  if (!parsed.success)
+    return res.status(400).json({ error: "Invalid payload", issues: parsed.error.issues });
 
   const report = parsed.data;
-  const head = renderHead(report);
-  const body = renderBody(report);
-  const html = htmlShell(head, body);
+  const html = htmlShell(renderHead(report), renderBody(report));
   res.type("text/html; charset=utf-8").send(html);
 });
 
-// Return PDF with page numbers + inlined header/footer images
-app.post("/render.pdf", async (req: Request, res: Response) => {
+/* ---- PDF generation ---- */
+app.post("/render.pdf", async (req, res) => {
   const parsed = ReportSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: "Invalid payload", issues: parsed.error.issues });
+  if (!parsed.success)
+    return res.status(400).json({ error: "Invalid payload", issues: parsed.error.issues });
 
   const report = parsed.data;
 
-  // Hide DOM fixed header/footer during print (PDF will use puppeteer templates)
-  const head = renderHead(report);
-  const body = renderBody(report);
   const html = htmlShell(
-    head + `<style>@media print { .fixed-header, .fixed-footer { display:none !important; } }</style>`,
-    body
+    renderHead(report) +
+      /* hide fixed header/footer when printing; puppeteer uses template equivalents */
+      `<style>@media print { .fixed-header, .fixed-footer { display:none !important; } }</style>`,
+    renderBody(report)
   );
 
-  let browser: import("puppeteer").Browser | null = null;
+  let browser: puppeteer.Browser | null = null;
   try {
     const tplAssets = await buildTemplateAssets(report);
 
@@ -170,24 +188,26 @@ app.post("/render.pdf", async (req: Request, res: Response) => {
     const pdf = await page.pdf({
       format: report.configs.page.size === "Letter" ? "Letter" : "A4",
       landscape: report.configs.page.orientation === "landscape",
-      printBackground: true,
+      printBackground: true, // keep background color / image
       displayHeaderFooter: true,
-      headerTemplate: headerTemplate(report, { logo: tplAssets.logo, headerImage: tplAssets.headerImage }),
+      headerTemplate: headerTemplate(report, {
+        logo: tplAssets.logo,
+        headerImage: tplAssets.headerImage,
+      }),
       footerTemplate: footerTemplate(report, { footerImage: tplAssets.footerImage }),
-      margin: {
-        top: "30mm",    // space for header
-        bottom: "30mm", // space for footer
-        left: "15mm",
-        right: "15mm",
-      },
+      margin: { top: "30mm", bottom: "30mm", left: "15mm", right: "15mm" },
       preferCSSPageSize: false,
     });
-
-    res.status(200);
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", `inline; filename="${report.reportName.replaceAll('"', "")}.pdf"`);
-    res.setHeader("Content-Length", String(pdf.length));
-    res.end(pdf);
+    const filename = asciiFilename(report.reportName) + ".pdf";
+    res
+      .status(200)
+      .setHeader("Content-Type", "application/pdf")
+      .setHeader(
+        "Content-Disposition",
+        `inline; filename="${filename.replaceAll('"', "")}"`
+      )
+      .setHeader("Content-Length", String(pdf.length))
+      .end(pdf);
   } catch (e: any) {
     console.error("PDF render failed:", e?.message || e);
     res.status(500).json({ error: "PDF render failed", detail: String(e?.message || e) });
@@ -196,13 +216,13 @@ app.post("/render.pdf", async (req: Request, res: Response) => {
   }
 });
 
-/* ============ Error Handler ============ */
+/* ---------- Error handler ---------- */
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   console.error(err);
   res.status(500).json({ error: "Internal Server Error" });
 });
 
-/* ============ Listen ============ */
+/* ---------- Listen ---------- */
 const port = Number(process.env.PORT || 5000);
 app.listen(port, "0.0.0.0", () => {
   console.log(`Renderer running at http://localhost:${port}`);
