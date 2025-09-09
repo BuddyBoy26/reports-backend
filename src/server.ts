@@ -1,11 +1,30 @@
+import 'dotenv/config';
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import morgan from "morgan";
 import * as puppeteer from "puppeteer";
-
+import { createClient } from '@supabase/supabase-js';
 import { ReportSchema, type Report } from "./schema.js";
 import { renderBody, renderHead } from "./renderers.js";
 import { htmlShell } from "./template.js";
+import { GeminiExtractor } from './services/geminiExtractor.js';
+import { DocumentProcessor } from './services/documentProcessor.js';
+
+// Environment validation
+if (!process.env.GEMINI_API_KEY) {
+  console.error('WARNING: GEMINI_API_KEY not found in environment variables');
+  console.error('Document extraction will not work without this key');
+}
+
+// Initialize services
+const geminiExtractor = new GeminiExtractor();
+const documentProcessor = new DocumentProcessor();
+
+// Initialize Supabase client
+const supabase = createClient(
+  process.env.SUPABASE_URL || '',
+  process.env.SUPABASE_SERVICE_KEY || ''
+);
 
 const app = express();
 
@@ -45,13 +64,12 @@ function escapeHtml(s: string) {
 }
 
 function asciiFilename(raw: string): string {
-  // Replace everything outside 0-127 with “_”, and collapse runs of “_”
   return raw
-    .normalize("NFKD")          // break accents ⇒ base+mark
-    .replace(/[\u0080-\uFFFF]/g, "_")  // non-ASCII → _
-    .replace(/_+/g, "_")               // shrink repeats
-    .replace(/^\W+|\W+$/g, "")         // trim leading/trailing non-word
-    || "report";                       // fallback
+    .normalize("NFKD")
+    .replace(/[\u0080-\uFFFF]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^\W+|\W+$/g, "")
+    || "report";
 }
 
 async function urlToDataUri(url?: string | null): Promise<string | null> {
@@ -164,7 +182,6 @@ app.post("/render.pdf", async (req, res) => {
 
   const html = htmlShell(
     renderHead(report) +
-      /* hide fixed header/footer when printing; puppeteer uses template equivalents */
       `<style>@media print { .fixed-header, .fixed-footer { display:none !important; } }</style>`,
     renderBody(report)
   );
@@ -188,7 +205,7 @@ app.post("/render.pdf", async (req, res) => {
     const pdf = await page.pdf({
       format: report.configs.page.size === "Letter" ? "Letter" : "A4",
       landscape: report.configs.page.orientation === "landscape",
-      printBackground: true, // keep background color / image
+      printBackground: true,
       displayHeaderFooter: true,
       headerTemplate: headerTemplate(report, {
         logo: tplAssets.logo,
@@ -216,6 +233,77 @@ app.post("/render.pdf", async (req, res) => {
   }
 });
 
+//===== ENHANCED BILL OF ENTRY EXTRACTION =====
+app.post("/extract-bill-data", async (req, res) => {
+  try {
+    const { pdfData, claimId } = req.body;
+
+    if (!pdfData) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing pdfData parameter'
+      });
+    }
+
+    console.log('[Extraction] Starting extraction process...');
+    console.log('[Extraction] Claim ID:', claimId);
+
+    // Fetch current field labels from database if claimId provided
+    let fieldLabels: Record<string, string> = {};
+    if (claimId) {
+  try {
+    const { data: claimData, error: claimError } = await supabase
+      .from('claims')
+      .select('form_data')
+      .eq('id', claimId)
+      .single();
+
+    if (!claimError && claimData?.form_data?.field_labels) {
+      fieldLabels = claimData.form_data.field_labels;
+      console.log('[Extraction] Using custom field labels:', Object.keys(fieldLabels).length, 'labels');
+    } else {
+      console.log('[Extraction] No custom labels found, using defaults');
+    }
+  } catch (err) {
+    console.warn('[Extraction] Could not fetch claim data:', err);
+  }
+}
+
+    // Convert base64 to buffer
+    const buffer = Buffer.from(pdfData, 'base64');
+    console.log('[Extraction] PDF buffer size:', buffer.length);
+
+    // Process PDF
+    const processedDoc = await documentProcessor.processPDF(buffer);
+    
+    // Extract with dynamic labels
+    const extractedData = await geminiExtractor.extractBillOfEntryData(
+  processedDoc.text, 
+  fieldLabels
+);
+
+console.log('[Extraction] Completed successfully');
+console.log('[Extraction] Extracted fields:', Object.keys(extractedData).length);
+
+res.json({
+  success: true,
+  extractedData: extractedData,
+  metadata: {
+    pages: processedDoc.pages,
+    textLength: processedDoc.text.length,
+    extractedFields: Object.keys(extractedData).length,
+    usedCustomLabels: Object.keys(fieldLabels).length > 0
+  }
+});
+  } catch (error: any) {
+    console.error('[Extraction] Error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
 /* ---------- Error handler ---------- */
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   console.error(err);
@@ -226,4 +314,10 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 const port = Number(process.env.PORT || 5000);
 app.listen(port, "0.0.0.0", () => {
   console.log(`Renderer running at http://localhost:${port}`);
+  console.log('Gemini API configured:', !!process.env.GEMINI_API_KEY);
+  console.log('Available routes:');
+  console.log('  GET  / - Health check');
+  console.log('  POST /render - HTML preview');
+  console.log('  POST /render.pdf - PDF generation');
+  console.log('  POST /extract-bill-data - Document extraction');
 });
