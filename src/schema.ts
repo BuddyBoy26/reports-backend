@@ -15,6 +15,19 @@ const Assets = z
   .partial()
   .default({});
 
+/* helper: accept URL -or- data-URI -or- repo-relative path */
+const imageRef = z
+  .string()
+  .min(1)
+  .refine(
+    (v) =>
+      v.startsWith("data:") ||           // already embedded
+      /^https?:\/\//i.test(v) ||          // http/https
+      /^[\w./\-_]+$/.test(v),             // something like assets/bg.png
+    { message: "Invalid image reference" }
+  );
+
+
 /* ---------- Config groups ---------- */
 const PageCfg = z
   .object({
@@ -200,7 +213,12 @@ export const ReportSchema = z
     company: z.string(),
     reportName: z.string(),
     colors: Colors.default({}),
-    assets: Assets.default({}),
+    assets: z.object({
+    logo:            imageRef.nullish(),
+    headerImage:     imageRef.nullish(),
+    footerImage:     imageRef.nullish(),
+    backgroundImage: imageRef.nullish(),
+  }),
     configs: Configs.default({}),
     components: z.array(Component).min(1),
   })

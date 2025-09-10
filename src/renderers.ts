@@ -183,9 +183,10 @@ export const renderBody = (r: Report) => {
              ${
                r.assets.headerImage
                  ? `<img src="${r.assets.headerImage}" alt="header" class="h-10"/>`
-                 : `<div class="text-xl font-semibold">${escapeHtml(
-                     r.reportName
-                   )}</div>`
+                 : ``
+                //  : `<div class="text-xl font-semibold">${escapeHtml(
+                //      r.reportName
+                //    )}</div>`
              }
            </div>
          </section>`
@@ -236,7 +237,8 @@ export const renderBody = (r: Report) => {
              ${
                r.assets.headerImage
                  ? `<img src="${r.assets.headerImage}" alt="header" class="h-10"/>`
-                 : `<div class="font-semibold">${escapeHtml(r.reportName)}</div>`
+                 : ``
+                //  : `<div class="font-semibold">${escapeHtml(r.reportName)}</div>`
              }
            </div>
          </header>`
@@ -244,7 +246,7 @@ export const renderBody = (r: Report) => {
 
   /* fixed footer */
   const fixedFooter = r.configs.footer.visible
-    ? `<footer class="fixed-footer border-t px-4" style="border-color:${r.colors.border}">
+    ? `<footer class="fixed-footer px-4" style="">
          ${
            r.assets.footerImage
              ? `<img src="${r.assets.footerImage}" alt="footer" class="h-6 mr-2"/>`
@@ -304,7 +306,7 @@ ${r.assets.backgroundImage ? `
 /* inner white margin via padding, not page margin */
 .body-wrap{
   padding:var(--page-margin);
-  padding-top:calc(var(--header-h) + var(--page-margin));
+  padding-top:calc(var(--header-h) + var(--page-margin) + 36mm);
   padding-bottom:calc(var(--footer-h) + var(--page-margin));
   box-decoration-break:clone;
   -webkit-box-decoration-break:clone; /* Chrome & Puppeteer */
