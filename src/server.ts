@@ -1,19 +1,38 @@
+import 'dotenv/config';
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import morgan from "morgan";
 import * as puppeteer from "puppeteer";
+import { createClient } from '@supabase/supabase-js';
 
 import { ReportSchema, type Report } from "./schema.js";
 import { renderBody, renderHead } from "./renderers.js";
 import { htmlShell } from "./template.js";
+import { toDataUri } from "./lib/toDataUri.js";   // helper
 
-import { toDataUri } from "./lib/toDataUri.js";   // ⬅️ NEW helper
+import { GeminiExtractor } from './services/geminiExtractor.js';
+import { DocumentProcessor } from './services/documentProcessor.js';
 
 /* ──────────────────────────────────────────────────────────── */
+/* ---------- Environment ---------- */
+if (!process.env.GEMINI_API_KEY) {
+  console.error('WARNING: GEMINI_API_KEY not found in environment variables');
+  console.error('Document extraction will not work without this key');
+}
 
+/* ---------- Initialize services ---------- */
+const geminiExtractor = new GeminiExtractor();
+const documentProcessor = new DocumentProcessor();
+
+/* ---------- Supabase client ---------- */
+const supabase = createClient(
+  process.env.SUPABASE_URL || '',
+  process.env.SUPABASE_SERVICE_KEY || ''
+);
+
+/* ---------- Express setup ---------- */
 const app = express();
 
-/* ---------- Middleware ---------- */
 app.use(
   express.json({ limit: "5mb", type: ["application/json", "application/*+json"] }),
 );
@@ -56,7 +75,7 @@ function asciiFilename(raw: string): string {
   );
 }
 
-/* ---------- Embed every image as a data-URI ---------- */
+/* ---------- Embed images as data URIs ---------- */
 async function hydrateAssets(report: Report) {
   report.assets.logo            = (await toDataUri(report.assets.logo))            ?? report.assets.logo;
   report.assets.headerImage     = (await toDataUri(report.assets.headerImage))     ?? report.assets.headerImage;
@@ -73,7 +92,7 @@ async function hydrateAssets(report: Report) {
   );
 }
 
-/* ---------- Header / footer HTML fragments ---------- */
+/* ---------- Header / footer templates ---------- */
 function headerTemplate(report: Report) {
   if (!report.configs.header.visible) return "<div></div>";
 
@@ -133,25 +152,27 @@ function footerTemplate(report: Report) {
 /* ---------- Routes ---------- */
 app.get("/", (_req, res) => res.json({ status: "ok" }));
 
+/* ---- Live HTML preview ---- */
 app.post("/render", async (req, res) => {
   const parsed = ReportSchema.safeParse(req.body);
   if (!parsed.success)
     return res.status(400).json({ error: "Invalid payload", issues: parsed.error.issues });
 
   const report = parsed.data;
-  await hydrateAssets(report);                            // ⬅️ embed images
+  await hydrateAssets(report);
 
   const html = htmlShell(renderHead(report), renderBody(report));
   res.type("text/html; charset=utf-8").send(html);
 });
 
+/* ---- PDF generation ---- */
 app.post("/render.pdf", async (req, res) => {
   const parsed = ReportSchema.safeParse(req.body);
   if (!parsed.success)
     return res.status(400).json({ error: "Invalid payload", issues: parsed.error.issues });
 
   const report = parsed.data;
-  await hydrateAssets(report);                            // ⬅️ embed images
+  await hydrateAssets(report);
 
   const html = htmlShell(
     renderHead(report) +
@@ -199,6 +220,77 @@ app.post("/render.pdf", async (req, res) => {
   }
 });
 
+/* ---- Bill of Entry Extraction ---- */
+app.post("/extract-bill-data", async (req, res) => {
+  try {
+    const { pdfData, claimId } = req.body;
+
+    if (!pdfData) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing pdfData parameter'
+      });
+    }
+
+    console.log('[Extraction] Starting extraction process...');
+    console.log('[Extraction] Claim ID:', claimId);
+
+    // Fetch current field labels from Supabase if claimId provided
+    let fieldLabels: Record<string, string> = {};
+    if (claimId) {
+      try {
+        const { data: claimData, error: claimError } = await supabase
+          .from('claims')
+          .select('form_data')
+          .eq('id', claimId)
+          .single();
+
+        if (!claimError && claimData?.form_data?.field_labels) {
+          fieldLabels = claimData.form_data.field_labels;
+          console.log('[Extraction] Using custom field labels:', Object.keys(fieldLabels).length, 'labels');
+        } else {
+          console.log('[Extraction] No custom labels found, using defaults');
+        }
+      } catch (err) {
+        console.warn('[Extraction] Could not fetch claim data:', err);
+      }
+    }
+
+    // Convert base64 to buffer
+    const buffer = Buffer.from(pdfData, 'base64');
+    console.log('[Extraction] PDF buffer size:', buffer.length);
+
+    // Process PDF
+    const processedDoc = await documentProcessor.processPDF(buffer);
+
+    // Extract with dynamic labels
+    const extractedData = await geminiExtractor.extractBillOfEntryData(
+      processedDoc.text, 
+      fieldLabels
+    );
+
+    console.log('[Extraction] Completed successfully');
+    console.log('[Extraction] Extracted fields:', Object.keys(extractedData).length);
+
+    res.json({
+      success: true,
+      extractedData: extractedData,
+      metadata: {
+        pages: processedDoc.pages,
+        textLength: processedDoc.text.length,
+        extractedFields: Object.keys(extractedData).length,
+        usedCustomLabels: Object.keys(fieldLabels).length > 0
+      }
+    });
+  } catch (error: any) {
+    console.error('[Extraction] Error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
 /* ---------- Error handler ---------- */
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   console.error(err);
@@ -209,4 +301,10 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
 const port = Number(process.env.PORT || 5000);
 app.listen(port, "0.0.0.0", () => {
   console.log(`Renderer running at http://localhost:${port}`);
+  console.log('Gemini API configured:', !!process.env.GEMINI_API_KEY);
+  console.log('Available routes:');
+  console.log('  GET  / - Health check');
+  console.log('  POST /render - HTML preview');
+  console.log('  POST /render.pdf - PDF generation');
+  console.log('  POST /extract-bill-data - Document extraction');
 });
