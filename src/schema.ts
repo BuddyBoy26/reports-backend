@@ -1,3 +1,4 @@
+//schema.ts
 import { z } from "zod";
 
 /* ---------- Tailwind helper ---------- */
@@ -192,6 +193,18 @@ const ImageComp = CompBase.extend({
     .strict(),
 });
 
+/* NEW ---------- Image Grid component ---------- */
+const ImageGridComp = CompBase.extend({
+  type: z.literal("image-grid"),
+  props: z
+    .object({
+      title: z.string().optional(),
+      rows: z.array(z.array(z.string().url())).min(1), // 2D array: rows of image URLs
+    })
+    .strict(),
+});
+
+
 /* ---------- Discriminated union ---------- */
 export const Component = z.discriminatedUnion("type", [
   HeaderComp,
@@ -205,6 +218,7 @@ export const Component = z.discriminatedUnion("type", [
   FooterTextComp,
   TableComp,
   ImageComp, // <- added
+  ImageGridComp, // <- added
 ]);
 
 /* ---------- Root schema ---------- */

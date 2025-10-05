@@ -13,6 +13,10 @@ import { toDataUri } from "./lib/toDataUri.js";   // helper
 import { GeminiExtractor } from './services/geminiExtractor.js';
 import { DocumentProcessor } from './services/documentProcessor.js';
 
+import multer from "multer";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import path from "path";
+
 /* ──────────────────────────────────────────────────────────── */
 /* ---------- Environment ---------- */
 if (!process.env.GEMINI_API_KEY) {
@@ -74,6 +78,19 @@ function asciiFilename(raw: string): string {
       .replace(/^\W+|\W+$/g, "") || "report"
   );
 }
+
+// ── S3 setup ────────────────────────────────
+const s3 = new S3Client({
+  region: process.env.AWS_REGION!,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+  },
+});
+const bucketName = process.env.AWS_S3_BUCKET!;
+
+// ── Multer setup ────────────────────────────
+const upload = multer({ storage: multer.memoryStorage() });
 
 /* ---------- Embed images as data URIs ---------- */
 async function hydrateAssets(report: Report) {
@@ -180,6 +197,7 @@ app.post("/render.pdf", async (req, res) => {
     renderBody(report),
   );
 
+
   let browser: puppeteer.Browser | null = null;
   try {
     browser = await puppeteer.launch({
@@ -219,6 +237,7 @@ app.post("/render.pdf", async (req, res) => {
     if (browser) await browser.close();
   }
 });
+
 
 /* ---- Bill of Entry Extraction ---- */
 app.post("/extract-bill-data", async (req, res) => {
@@ -291,6 +310,37 @@ app.post("/extract-bill-data", async (req, res) => {
   }
 });
 
+// ── Upload route ────────────────────────────
+app.post("/upload-image", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    const timestamp = Date.now();
+    const safeName = req.file.originalname.replace(/\s+/g, "_");
+    const key = `${safeName}_${timestamp}`;
+
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: bucketName,
+        Key: key,
+        Body: req.file.buffer,
+        ContentType: req.file.mimetype,
+        // ACL: "public-read", // optional if bucket is public
+      })
+    );
+
+    const fileUrl = `https://${bucketName}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+    console.log("[Upload] Success:", fileUrl);
+
+    res.json({ success: true, url: fileUrl });
+  } catch (err: any) {
+    console.error("[Upload] Failed:", err);
+    res.status(500).json({ error: "Upload failed", detail: err.message });
+  }
+});
+
 /* ---------- Error handler ---------- */
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   console.error(err);
@@ -307,4 +357,9 @@ app.listen(port, "0.0.0.0", () => {
   console.log('  POST /render - HTML preview');
   console.log('  POST /render.pdf - PDF generation');
   console.log('  POST /extract-bill-data - Document extraction');
+  console.log('  POST /upload-image - Image upload to S3');
 });
+
+
+
+

@@ -1,3 +1,4 @@
+//renderers.ts
 /* eslint-disable @typescript-eslint/ban-types */
 import type { Cfg, Col, Report } from "./schema.js";
 
@@ -168,6 +169,81 @@ const imageBlock = (p: any, s: any) => {
 </section>`;
 };
 
+const imageGridBlock = (p: any, s: any) => {
+  const title = p.title
+    ? `<div class="${tw("mb-4 text-center font-semibold text-slate-700 tracking-wide", s?.title)}">
+         ${esc(p.title)}
+       </div>`
+    : "";
+
+  // Flatten all rows and limit to 6 images (2 columns × 3 rows)
+  const allImages = (p.rows || []).flat();
+  const limited = allImages.slice(0, 6);
+
+  // Build rows with 2 images each
+  const rows: string[] = [];
+  for (let i = 0; i < limited.length; i += 2) {
+    const rowImgs = limited.slice(i, i + 2);
+    const cells = rowImgs
+      .map(
+        (url: string) => `
+          <td style="
+            width:50%;
+            text-align:center;
+            vertical-align:middle;
+            padding:16px 0;
+          ">
+            <img src="${esc(url)}"
+                 style="
+                   width:auto;
+                   max-width:30vh;
+                   height:auto;
+                   max-height:20vh;
+                   object-fit:contain;
+                   border:none;
+                   border-radius:3px;
+                   display:block;
+                   margin:0 auto;
+                 "/>
+          </td>`
+      )
+      .join("");
+
+    // Fill remaining cell if needed
+    const filler = rowImgs.length < 2 ? `<td style="max-height:20vh; display:flex; align-items:center; 
+           justify-content:center;"></td>` : "";
+    rows.push(`<tr>${cells}${filler}</tr>`);
+  }
+
+  return `
+  <div style="text-align:center;
+           display:flex; 
+           align-items:center; 
+           justify-content:center;
+           margin:0 auto;
+           width:100%;">
+<section class="${tw("my-10", s?.wrapper)}" 
+         style="
+           width:90vw; 
+           display:flex; 
+           align-items:center; 
+           justify-content:center;
+         ">
+  <table style="
+    width:80%;
+    border-collapse:collapse;
+    table-layout:fixed;
+    margin:0 auto;
+    text-align:center;
+  ">
+    <tbody>
+      ${rows.join("\n")}
+    </tbody>
+  </table>
+</section>
+</div>`;
+};
+
 /* ---------- Renderers ---------- */
 export const renderBody = (r: Report) => {
   /* first-page header (repeat === 'first') */
@@ -218,6 +294,8 @@ export const renderBody = (r: Report) => {
           return tableBlock((c as any).props, c.style, r.configs, r.colors);
         case "image":
           return imageBlock((c as any).props, c.style);
+        case "image-grid":
+          return imageGridBlock((c as any).props, c.style);
         default:
           return "";
       }
