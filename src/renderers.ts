@@ -116,7 +116,7 @@ const tableBlock = (p: any, s: any, cfg: Cfg, col: Col) => {
     .join("");
   const body = (p.rows || [])
     .map((row: any[], i: number) => {
-      const bg = cfg.table.striped && i % 2 === 1 ? "bg-gray-50" : "";
+      const bg = cfg.table.striped && i % 2 === 1 ? "bg-gray-100" : "bg-white";
       const tds = row
         .map(
           (c: any) =>
@@ -192,11 +192,12 @@ const imageGridBlock = (p: any, s: any) => {
             text-align:center;
             vertical-align:middle;
             padding:16px 0;
+            border: 2px solid black;
           ">
             <img src="${esc(url)}"
                  style="
                    width:auto;
-                   max-width:30vh;
+                   max-width:30vw;
                    height:auto;
                    max-height:20vh;
                    object-fit:contain;
@@ -212,7 +213,7 @@ const imageGridBlock = (p: any, s: any) => {
     // Fill remaining cell if needed
     const filler = rowImgs.length < 2 ? `<td style="max-height:20vh; display:flex; align-items:center; 
            justify-content:center;"></td>` : "";
-    rows.push(`<tr>${cells}${filler}</tr>`);
+    rows.push(`<tr style="border: 2px solid black;">${cells}${filler}</tr>`);
   }
 
   return `
