@@ -10,6 +10,7 @@
     "postinstall": "puppeteer browsers install chrome"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.917.0",
     "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.57.3",
     "@types/cors": "2.8.17",
@@ -20,6 +21,7 @@
     "express": "4.19.2",
     "helmet": "7.1.0",
     "morgan": "1.10.0",
+    "multer": "^2.0.2",
     "pdf-extraction": "^1.0.2",
     "pdf-parse": "^1.1.1",
     "pdf-poppler": "^0.2.1",
@@ -30,6 +32,7 @@
     "zod": "3.23.8"
   },
   "devDependencies": {
+    "@types/multer": "^2.0.0",
     "@types/node": "22.5.4",
     "tsx": "4.19.1",
     "typescript": "5.5.4"

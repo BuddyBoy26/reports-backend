@@ -53,7 +53,48 @@ export class GeminiExtractor {
       
       console.log('[GeminiExtractor] Raw response length:', text.length);
       
-      return this.parseExtractionResult(text);
+      return this.parseExtractionResult(text) as ExtractedBillData;
+    } catch (error: any) {
+      console.error('[GeminiExtractor] Error:', error);
+      throw new Error(`AI extraction failed: ${error.message}`);
+    }
+  }
+
+  async extractSelectiveFields(
+    pdfText: string, 
+    fieldsToExtract: string[],
+    documentType?: string
+  ): Promise<Record<string, any>> {
+    const prompt = this.createSelectiveExtractionPrompt(fieldsToExtract, documentType);
+    
+    try {
+      console.log('[GeminiExtractor] Starting selective extraction...');
+      console.log('[GeminiExtractor] Fields requested:', fieldsToExtract.length);
+      console.log('[GeminiExtractor] Document type:', documentType || 'Generic');
+      
+      const result = await this.model.generateContent([
+        prompt,
+        `\n\nDocument Content:\n${pdfText}`
+      ]);
+
+      const response = await result.response;
+      const text = response.text();
+      
+      console.log('[GeminiExtractor] Raw response length:', text.length);
+      
+      const extractedData = this.parseExtractionResult(text);
+      
+      // Filter to only return requested fields (in case Gemini returns extra)
+      const filteredData: Record<string, any> = {};
+      fieldsToExtract.forEach(field => {
+        if (extractedData[field] !== undefined && extractedData[field] !== null) {
+          filteredData[field] = extractedData[field];
+        }
+      });
+      
+      console.log('[GeminiExtractor] Filtered to requested fields:', Object.keys(filteredData).length);
+      
+      return filteredData;
     } catch (error: any) {
       console.error('[GeminiExtractor] Error:', error);
       throw new Error(`AI extraction failed: ${error.message}`);
@@ -115,8 +156,8 @@ CRITICAL INSTRUCTIONS:
 Search thoroughly through the entire document for each field.`;
   }
 
-  private parseExtractionResult(text: string): ExtractedBillData {
-    try {
+    private parseExtractionResult(text: string): Record<string, any> {
+      try {
       let cleanedText = text.trim();
       
       // Remove markdown code blocks
@@ -139,4 +180,64 @@ Search thoroughly through the entire document for each field.`;
       throw new Error(`Invalid response format: ${error.message}`);
     }
   }
+
+
+  private createSelectiveExtractionPrompt(
+      fieldsToExtract: string[],
+      documentType?: string
+    ): string {
+      // Convert field names to readable labels
+      // e.g., 'policy_number' -> 'Policy Number'
+      const fieldDescriptions = fieldsToExtract.map(field => {
+        const readableLabel = field
+          .split('_')
+          .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(' ');
+        
+        return `  "${field}": "Extract the value for '${readableLabel}'"`;
+      }).join(',\n');
+
+      const docTypeContext = documentType 
+        ? `This is a ${documentType}.` 
+        : 'This is a business document.';
+
+      return `You are a specialized document extraction AI for ${documentType || 'business documents'}.
+
+    ${docTypeContext}
+
+    Extract ONLY the following specific fields and return a valid JSON object:
+
+    {
+    ${fieldDescriptions}
+    }
+
+    CRITICAL INSTRUCTIONS:
+    1. Return ONLY a valid JSON object, no explanations or markdown
+    2. Extract ONLY the fields listed above - do not add any other fields
+    3. If a field is not found in the document, use null as the value
+    4. For numeric values, extract only numbers (remove currency symbols like Rs, $, etc.)
+    5. For dates, preserve the format found in the document
+    6. Look for the field labels case-insensitively and with flexible matching
+    7. Search for variations, abbreviations, and common alternative names
+    8. For amounts/values, include only the number (e.g., "50000" not "Rs. 50,000")
+    9. For names, include the full name as it appears
+    10. For numbers like policy numbers or certificate numbers, preserve the exact format
+    11. Search thoroughly through the ENTIRE document for each field
+    12. Look in tables, forms, headers, and text sections
+    13. If you find multiple instances of a field, use the most prominent or first occurrence
+
+    IMPORTANT: Be aggressive in your search. Look for:
+    - Exact field name matches
+    - Partial matches (e.g., "Policy No" matches "policy_number")
+    - Common abbreviations (e.g., "Amt" for "Amount", "No" for "Number")
+    - Field names in different formats (with/without colons, different spacing)
+    - Values that appear near the field labels
+
+    Return format example:
+    {
+      "field_name": "extracted value",
+      "another_field": "another value",
+      "not_found_field": null
+    }`;
+    }
 }

@@ -310,6 +310,71 @@ app.post("/extract-bill-data", async (req, res) => {
   }
 });
 
+
+app.post("/extract-selective-fields", async (req, res) => {
+  try {
+    const { pdfData, claimId, fieldsToExtract, documentType } = req.body;
+
+    if (!pdfData) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing pdfData parameter'
+      });
+    }
+
+    if (!fieldsToExtract || !Array.isArray(fieldsToExtract)) {
+      return res.status(400).json({
+        success: false,
+        message: 'fieldsToExtract must be an array'
+      });
+    }
+
+    console.log('[Selective Extraction] Starting extraction process...');
+    console.log('[Selective Extraction] Document Type:', documentType);
+    console.log('[Selective Extraction] Fields to extract:', fieldsToExtract);
+    console.log('[Selective Extraction] Claim ID:', claimId);
+
+    // Convert base64 to buffer
+    const buffer = Buffer.from(pdfData, 'base64');
+    console.log('[Selective Extraction] PDF buffer size:', buffer.length);
+
+    // Process PDF using your existing processor
+    const processedDoc = await documentProcessor.processPDF(buffer);
+    console.log('[Selective Extraction] PDF processed, text length:', processedDoc.text.length);
+
+    // Extract using Gemini with ONLY the specified fields
+    const extractedData = await geminiExtractor.extractSelectiveFields(
+      processedDoc.text,
+      fieldsToExtract,
+      documentType
+    );
+
+    const fieldsFound = Object.keys(extractedData).length;
+    console.log('[Selective Extraction] Completed successfully');
+    console.log('[Selective Extraction] Fields found:', fieldsFound, '/', fieldsToExtract.length);
+
+    res.json({
+      success: true,
+      extractedData: extractedData,
+      fieldsFound: fieldsFound,
+      fieldsRequested: fieldsToExtract.length,
+      metadata: {
+        pages: processedDoc.pages,
+        textLength: processedDoc.text.length,
+        documentType: documentType
+      },
+      message: `Successfully extracted ${fieldsFound} out of ${fieldsToExtract.length} requested fields`
+    });
+
+  } catch (error: any) {
+    console.error('[Selective Extraction] Error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
 // ── Upload route ────────────────────────────
 app.post("/upload-image", upload.single("file"), async (req, res) => {
   try {

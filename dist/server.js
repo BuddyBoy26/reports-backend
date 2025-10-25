@@ -6,6 +6,8 @@ import puppeteer from "puppeteer";
 import { ReportSchema } from "./schema.js";
 import { renderBody, renderHead } from "./renderers.js";
 import { htmlShell } from "./template.js";
+
+
 const app = express();
 /* ============ Middleware ============ */
 app.use(express.json({ limit: "5mb", type: ["application/json", "application/*+json"] }));
