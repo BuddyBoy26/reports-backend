@@ -46,12 +46,13 @@ app.use(
       "http://localhost:8080",
       "http://localhost:5173",
       "http://localhost:3000",
+      "http://127.0.0.1:8080",
       "https://claim-portal-testing.vercel.app",
       "https://claim-portal.vercel.app",
       "http://127.0.0.1:5500",
     ],
-    methods: ["GET", "POST", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],  // ADD THIS
+    allowedHeaders: ['Content-Type', 'Authorization']  // A
   }),
 );
 app.options("*", cors());
@@ -342,12 +343,18 @@ app.post("/extract-selective-fields", async (req, res) => {
     const processedDoc = await documentProcessor.processPDF(buffer);
     console.log('[Selective Extraction] PDF processed, text length:', processedDoc.text.length);
 
-    // Extract using Gemini with ONLY the specified fields
-    const extractedData = await geminiExtractor.extractSelectiveFields(
+    // Extract using Gemini with timeout (45 seconds)
+    const extractionPromise = geminiExtractor.extractSelectiveFields(
       processedDoc.text,
       fieldsToExtract,
       documentType
     );
+    
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Extraction timeout after 45 seconds. Try reducing the number of fields.')), 45000)
+    );
+    
+    const extractedData = await Promise.race([extractionPromise, timeoutPromise]) as Record<string, any>;
 
     const fieldsFound = Object.keys(extractedData).length;
     console.log('[Selective Extraction] Completed successfully');

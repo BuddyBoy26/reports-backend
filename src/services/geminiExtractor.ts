@@ -27,11 +27,11 @@ export class GeminiExtractor {
     
     const genAI = new GoogleGenerativeAI(apiKey);
     this.model = genAI.getGenerativeModel({ 
-      model: "gemini-2.5-flash-lite",
+      model: "gemini-2.5-flash-exp",
       generationConfig: {
         temperature: 0.1,
         topP: 0.8,
-        maxOutputTokens: 2048,
+        maxOutputTokens: 4096,
       }
     });
   }
